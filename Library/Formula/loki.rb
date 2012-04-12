@@ -7,7 +7,7 @@ class Loki < Formula
   version '0.1.7'
 
   def install
-    system "make" # Separate steps or install fails
-    system "make install"
+    system "make DESTDIR=#{prefix}" # Separate steps or install fails
+    system "make install DESTDIR=#{prefix}"
   end
 end
