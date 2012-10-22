@@ -3,9 +3,7 @@ require 'formula'
 class Ispell < Formula
   homepage 'http://lasr.cs.ucla.edu/geoff/ispell.html'
   url 'http://www.lasr.cs.ucla.edu/geoff/tars/ispell-3.3.02.tar.gz'
-  md5 '12087d7555fc2b746425cd167af480fe'
-
-  skip_clean :all
+  sha1 'c0d98e1af3afb8e0b642717c03439ff8881e3d60'
 
   def install
     ENV.deparallelize
@@ -32,11 +30,5 @@ class Ispell < Formula
     lib.mkpath
     system "make all"
     system "make install"
-  end
-
-  def test
-    %w{ buildhash defmt-c defmt-sh findaffix icombine ijoin ispell munchlist tryaffix}.each do |f|
-      system "test -x #{bin}/#{f}"
-    end
   end
 end

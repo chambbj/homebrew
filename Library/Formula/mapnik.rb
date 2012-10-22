@@ -1,29 +1,43 @@
 require 'formula'
 
 class Mapnik < Formula
-  url 'https://github.com/downloads/mapnik/mapnik/mapnik-v2.0.1.tar.bz2'
-  md5 'e3dd09991340e2568b99f46bac34b0a8'
   homepage 'http://www.mapnik.org/'
+  url 'https://github.com/downloads/mapnik/mapnik/mapnik-v2.1.0.tar.bz2'
+  sha1 'b1c6a138e65a5e20f0f312a559e2ae7185adf5b6'
+
   head 'https://github.com/mapnik/mapnik.git'
 
-  depends_on 'pkg-config' => :build
+  option 'with-cairo', 'Build with Cairo'
+
+  depends_on :freetype
+  depends_on :libpng
   depends_on 'libtiff'
-  depends_on 'jpeg'
   depends_on 'proj'
   depends_on 'icu4c'
+  depends_on 'jpeg'
   depends_on 'boost'
-  depends_on 'cairomm' => :optional
+
+  if build.include? 'with-cairo'
+    depends_on 'pkg-config' => :build
+    depends_on 'cairo' => :optional
+    depends_on 'cairomm' => :optional
+  end
 
   def install
-    ENV.x11 # for freetype-config
-
     icu = Formula.factory("icu4c")
+    # mapnik compiles can take ~1.5 GB per job for some .cpp files
+    # so lets be cautious by limiting to CPUS/2
+    jobs = ENV.make_jobs
+    if jobs > 2
+        jobs = Integer(jobs/2)
+    end
+
     system "python",
            "scons/scons.py",
            "configure",
            "CC=\"#{ENV.cc}\"",
            "CXX=\"#{ENV.cxx}\"",
-           "JOBS=#{ENV.make_jobs}",
+           "JOBS=#{jobs}",
            "PREFIX=#{prefix}",
            "ICU_INCLUDES=#{icu.include}",
            "ICU_LIBS=#{icu.lib}",

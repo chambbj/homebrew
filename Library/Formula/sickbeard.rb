@@ -1,9 +1,9 @@
 require 'formula'
 
 class Sickbeard < Formula
-  url 'https://github.com/midgetspy/Sick-Beard/tarball/build-494'
   homepage 'http://www.sickbeard.com/'
-  md5 'ffa9a21ee0c99af8319e434323f4ca64'
+  url 'https://github.com/midgetspy/Sick-Beard/tarball/build-496'
+  sha1 '79b55d6075b2ddf04b8c196c091b465839396f3b'
 
   head 'https://github.com/midgetspy/Sick-Beard.git'
 
@@ -12,8 +12,6 @@ class Sickbeard < Formula
   def install
     prefix.install Dir['*']
     (bin+"sickbeard").write(startup_script)
-    plist_path.write(startup_plist)
-    plist_path.chmod 0644
   end
 
   def startup_plist; <<-EOS.undent
