@@ -2,40 +2,63 @@ require 'formula'
 
 class Vim < Formula
   homepage 'http://www.vim.org/'
-  # Get stable versions from hg repo instead of downloading an increasing
-  # number of separate patches.
-  url 'https://vim.googlecode.com/hg/', :tag => 'v7-3-709'
-  version '7.3.709'
-
+  # This package tracks debian-unstable: http://packages.debian.org/unstable/vim
+  url 'http://ftp.de.debian.org/debian/pool/main/v/vim/vim_7.3.923.orig.tar.gz'
+  sha1 'f308d219dd9c6b56e84109ace4e7487a101088f5'
   head 'https://vim.googlecode.com/hg/'
 
   env :std # To find interpreters
 
+  depends_on :hg => :build if build.head?
+
+  LANGUAGES         = %w(lua mzscheme perl python python3 tcl ruby)
+  DEFAULT_LANGUAGES = %w(ruby python)
+
+  option "override-system-vi", "Override system vi"
+  LANGUAGES.each do |language|
+    option "with-#{language}", "Build vim with #{language} support"
+    option "without-#{language}", "Build vim without #{language} support"
+  end
+
+  option "disable-nls", "Build vim without National Language Support (translated messages, keymaps)"
+
   def install
-    # Why are we specifying HOMEBREW_PREFIX as the prefix?
-    #
-    # To make vim look for the system vimscript files in the
-    # right place, we need to tell it about HOMEBREW_PREFIX.
-    # The actual install location will still be in the Cellar.
-    #
-    # This way, user can create /usr/local/share/vim/vimrc
-    # or /usr/local/share/vim/vimfiles and they won't end up
-    # in the Cellar, and be removed when vim is upgraded.
+    ENV['LUA_PREFIX'] = HOMEBREW_PREFIX
+
+    language_opts = LANGUAGES.map do |language|
+      if DEFAULT_LANGUAGES.include? language and !build.include? "without-#{language}"
+        "--enable-#{language}interp"
+      elsif build.include? "with-#{language}"
+        "--enable-#{language}interp"
+      end
+    end.compact
+
+    opts = language_opts
+    opts << "--disable-nls" if build.include? "disable-nls"
+
+    # XXX: Please do not submit a pull request that hardcodes the path
+    # to ruby: vim can be compiled against 1.8.x or 1.9.3-p385 and up.
+    # If you have problems with vim because of ruby, ensure a compatible
+    # version is first in your PATH when building vim.
+
+    # We specify HOMEBREW_PREFIX as the prefix to make vim look in the
+    # the right place (HOMEBREW_PREFIX/share/vim/{vimrc,vimfiles}) for
+    # system vimscript files. We specify the normal installation prefix
+    # when calling "make install".
     system "./configure", "--prefix=#{HOMEBREW_PREFIX}",
                           "--mandir=#{man}",
                           "--enable-gui=no",
                           "--without-x",
-                          "--disable-nls",
                           "--enable-multibyte",
                           "--with-tlib=ncurses",
-                          "--enable-pythoninterp",
-                          "--enable-rubyinterp",
                           "--enable-cscope",
-                          "--with-features=huge"
+                          "--with-features=huge",
+                          *opts
     system "make"
-
-    # Even though we specified HOMEBREW_PREFIX for configure,
-    # we still want to install it in the Cellar location.
-    system "make", "install", "prefix=#{prefix}"
+    # If stripping the binaries is not enabled, vim will segfault with
+    # statically-linked interpreters like ruby
+    # http://code.google.com/p/vim/issues/detail?id=114&thanks=114&ts=1361483471
+    system "make", "install", "prefix=#{prefix}", "STRIP=/usr/bin/true"
+    ln_s bin+'vim', bin+'vi' if build.include? 'override-system-vi'
   end
 end

@@ -22,6 +22,13 @@ class Denyhosts < Formula
     inreplace 'DenyHosts/constants.py' do |s|
       s.change_make_var! 'CONFIG_FILE', "'#{etc}/denyhosts.cfg'"
     end
+
+    unless MacOS.mountain_lion_or_newer?
+      inreplace 'denyhosts.cfg' do |s|
+        s.gsub! %r{^SECURE_LOG\s*=\s*/private/var/log/system\.log}, 'SECURE_LOG = /private/var/log/secure.log'
+      end
+    end
+
     # Install mostly into libexec (a la Duplicity)
     system "python", "setup.py", "install",
                      "--prefix=#{prefix}",
@@ -38,7 +45,9 @@ class Denyhosts < Formula
     sbin.install_symlink libexec+'denyhosts.py' => 'denyhosts'
   end
 
-  def startup_plist; <<-EOS.undent
+  plist_options :startup => true
+
+  def plist; <<-EOS.undent
     <?xml version="1.0" encoding="UTF-8"?>
     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
     <plist version="1.0">
@@ -47,7 +56,7 @@ class Denyhosts < Formula
       <string>#{plist_name}</string>
       <key>ProgramArguments</key>
       <array>
-        <string>#{HOMEBREW_PREFIX}/sbin/denyhosts</string>
+        <string>#{opt_prefix}/sbin/denyhosts</string>
       </array>
       <key>RunAtLoad</key>
       <true/>
@@ -60,20 +69,12 @@ class Denyhosts < Formula
     EOS
   end
 
-  def caveats
-    <<-EOS.undent
-      Unless it exists already, a denyhosts.cfg file has been written to:
-        #{etc}/denyhosts.cfg
+  def caveats; <<-EOS.undent
+    Unless it exists already, a denyhosts.cfg file has been written to:
+      #{etc}/denyhosts.cfg
 
-      All DenyHosts scripts will load this file by default unless told to use
-      a different one.
-
-      A launchctl plist has been created that will run DenyHosts to update
-      /etc/hosts.deny every 10 minutes. It will need to be run by the user that
-      owns /etc/hosts.deny, usually root, and can be set to load at startup
-      via:
-        sudo cp #{plist_path} /Library/LaunchDaemons/
-
+    All DenyHosts scripts will load this file by default unless told to use
+    a different one.
     EOS
   end
 end
@@ -268,10 +269,10 @@ index 0000000..a140844
 +#
 +# Mac OS X (v10.4 or greater - 
 +#   also refer to:   http://www.denyhosts.net/faq.html#macos
-+SECURE_LOG = /private/var/log/secure.log
++#SECURE_LOG = /private/var/log/secure.log
 +#
 +# Mac OS X (v10.3 or earlier):
-+#SECURE_LOG=/private/var/log/system.log
++SECURE_LOG=/private/var/log/system.log
 +#
 +########################################################################
 +

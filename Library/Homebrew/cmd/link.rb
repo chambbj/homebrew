@@ -17,10 +17,13 @@ module Homebrew extend self
     ARGV.kegs.each do |keg|
       if keg.linked?
         opoo "Already linked: #{keg}"
+        puts "To relink: brew unlink #{keg.fname} && brew link #{keg.fname}"
         next
-      end
-
-      if mode.dry_run and mode.overwrite
+      elsif keg_only?(keg.fname) && !ARGV.force?
+        opoo "#{keg.fname} is keg-only and must be linked with --force"
+        puts "Note that doing so can interfere with building software."
+        next
+      elsif mode.dry_run && mode.overwrite
         print "Would remove:\n" do
           keg.link(mode)
         end
@@ -34,13 +37,21 @@ module Homebrew extend self
         next
       end
 
-      print "Linking #{keg}... " do
-        puts "#{keg.link(mode)} symlinks created"
+      keg.lock do
+        print "Linking #{keg}... " do
+          puts "#{keg.link(mode)} symlinks created"
+        end
       end
     end
   end
 
   private
+
+  def keg_only?(name)
+    Formula.factory(name).keg_only?
+  rescue FormulaUnavailableError
+    false
+  end
 
   # Allows us to ensure a puts happens before the block exits so that if say,
   # an exception is thrown, its output starts on a new line.
@@ -53,7 +64,7 @@ module Homebrew extend self
       end
     end
 
-    puts_capture.instance_eval &block
+    puts_capture.instance_eval(&block)
 
   ensure
     puts unless $did_puts

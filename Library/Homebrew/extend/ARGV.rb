@@ -7,14 +7,6 @@ module HomebrewArgvExtension
     select {|arg| arg[0..0] == '-'}
   end
 
-  def used_options f
-    f.build.as_flags & options_only
-  end
-
-  def unused_options f
-    f.build.as_flags - options_only
-  end
-
   def formulae
     require 'formula'
     @formulae ||= downcased_unique_named.map{ |name| Formula.factory name }
@@ -97,6 +89,10 @@ module HomebrewArgvExtension
     include?('--dry-run') || switch?('n')
   end
 
+  def homebrew_developer?
+    include? '--homebrew-developer' or ENV['HOMEBREW_DEVELOPER']
+  end
+
   def ignore_deps?
     include? '--ignore-dependencies'
   end
@@ -130,7 +126,7 @@ module HomebrewArgvExtension
   end
 
   def build_bottle?
-    include? '--build-bottle' and MacOS.bottles_supported?
+    include? '--build-bottle' or ENV['HOMEBREW_BUILD_BOTTLE']
   end
 
   def build_from_source?
@@ -139,22 +135,17 @@ module HomebrewArgvExtension
   end
 
   def flag? flag
-    options_only.each do |arg|
-      return true if arg == flag
-      next if arg[1..1] == '-'
-      return true if arg.include? flag[2..2]
+    options_only.any? do |arg|
+      arg == flag || arg[1..1] != '-' && arg.include?(flag[2..2])
     end
-    return false
   end
 
   # eg. `foo -ns -i --bar` has three switches, n, s and i
   def switch? switch_character
     return false if switch_character.length > 1
-    options_only.each do |arg|
-      next if arg[1..1] == '-'
-      return true if arg.include? switch_character
+    options_only.any? do |arg|
+      arg[1..1] != '-' && arg.include?(switch_character)
     end
-    return false
   end
 
   def usage
@@ -178,8 +169,8 @@ module HomebrewArgvExtension
     flags_to_clear.each {|flag| delete flag}
 
     yield
-
-    replace old_args
+  ensure
+    replace(old_args)
   end
 
   private

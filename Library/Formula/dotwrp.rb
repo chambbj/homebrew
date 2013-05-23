@@ -2,8 +2,8 @@ require 'formula'
 
 class Dotwrp < Formula
   homepage 'https://github.com/tenomoto/dotwrp'
-  url 'https://github.com/tenomoto/dotwrp/tarball/v1.0'
-  sha1 '98d0d2ad0c49528e0df5d004962a25c5414b17b8'
+  url 'https://github.com/tenomoto/dotwrp/archive/v1.1.tar.gz'
+  sha1 'd328705ec424898382956bb8a0be16a680372f05'
 
   head 'https://github.com/tenomoto/dotwrp.git'
 

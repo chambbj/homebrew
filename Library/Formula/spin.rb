@@ -2,9 +2,9 @@ require 'formula'
 
 class Spin < Formula
   homepage 'http://spinroot.com/spin/whatispin.html'
-  url 'http://spinroot.com/spin/Src/spin622.tar.gz'
-  version '6.2.2'
-  sha1 'f402048864761d0fceefa61e8f03a9ee33a16a4c'
+  url 'http://spinroot.com/spin/Src/spin624.tar.gz'
+  version '6.2.4'
+  sha1 '980d47f26f8a0f5e191fc47c2240dc96f3dceab9'
 
   fails_with :llvm do
     build 2334
@@ -18,21 +18,22 @@ class Spin < Formula
   def install
     ENV.deparallelize
 
-    cd("Src#{version}") do
+    cd "Src#{version}" do
       system "make"
       bin.install "spin"
     end
 
+    bin.install "iSpin/ispin.tcl" => "ispin"
     man1.install "Man/spin.1"
   end
 end
 
 # manual patching is required by the spin install process
 __END__
-diff --git a/Src6.2.2/makefile b/Src6.2.2/makefile
+diff --git a/Src6.2.4/makefile b/Src6.2.4/makefile
 index 02d2a02..7687e0a 100644
---- a/Src6.2.2/makefile
-+++ b/Src6.2.2/makefile
+--- a/Src6.2.4/makefile
++++ b/Src6.2.4/makefile
 @@ -13,12 +13,12 @@
  
  # see also ./make_pc for a simpler script, not requiring make

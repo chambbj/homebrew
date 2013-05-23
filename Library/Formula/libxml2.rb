@@ -2,23 +2,26 @@ require 'formula'
 
 class Libxml2 < Formula
   homepage 'http://xmlsoft.org'
-  url 'ftp://xmlsoft.org/libxml2/libxml2-2.8.0.tar.gz'
-  sha256 'f2e2d0e322685193d1affec83b21dc05d599e17a7306d7b90de95bb5b9ac622a'
+  url 'ftp://xmlsoft.org/libxml2/libxml2-2.9.1.tar.gz'
+  mirror 'http://xmlsoft.org/sources/libxml2-2.9.1.tar.gz'
+  sha256 'fd3c64cb66f2c4ea27e934d275904d92cec494a8e8405613780cbc8a71680fdb'
 
   keg_only :provided_by_osx
+
+  option :universal
+  option 'with-python', 'Compile the libxml2 Python 2.x modules'
 
   fails_with :llvm do
     build 2326
     cause "Undefined symbols when linking"
   end
 
-  option :universal
-  option 'with-python', 'Compile the libxml2 Python 2.x modules'
-
   def install
     ENV.universal_binary if build.universal?
 
-    system "./configure", "--prefix=#{prefix}", "--without-python"
+    system "./configure", "--disable-dependency-tracking",
+                          "--prefix=#{prefix}",
+                          "--without-python"
     system "make"
     ENV.deparallelize
     system "make install"
@@ -36,6 +39,11 @@ class Libxml2 < Formula
 
         ENV.append 'CFLAGS', arch_flags
         ENV.append 'LDFLAGS', arch_flags
+
+        unless MacOS::CLT.installed?
+          # We can hijack /opt/include to insert SDKROOT/usr/include
+          inreplace 'setup.py', '"/opt/include",', "'#{MacOS.sdk_path}/usr/include',"
+        end
 
         system "python", "setup.py",
                          "install_lib",

@@ -5,9 +5,14 @@ class WineGecko < Formula
   sha1 'c30aa99621e98336eb4b7e2074118b8af8ea2ad5'
 
   devel do
-    url 'http://downloads.sourceforge.net/wine/wine_gecko-1.8-x86.msi', :using => :nounzip
-    sha1 'a8622ff749cc2a2cb311f902b7e99664ecc2f8d6'
+    url 'http://downloads.sourceforge.net/wine/wine_gecko-1.9-x86.msi', :using => :nounzip
+    sha1 'd2553224848a926eacfa8685662ff1d7e8be2428'
   end
+end
+
+class WineMono < Formula
+  url 'http://downloads.sourceforge.net/wine/wine-mono-0.0.8.msi', :using => :nounzip
+  sha1 'dd349e72249ce5ff981be0e9dae33ac4a46a9f60'
 end
 
 class Wine < Formula
@@ -18,17 +23,27 @@ class Wine < Formula
   head 'git://source.winehq.org/git/wine.git'
 
   devel do
-    # NOTE: when updating Wine, please check if Wine-Gecko needs updating too
-    # see http://wiki.winehq.org/Gecko
-    url 'http://downloads.sourceforge.net/project/wine/Source/wine-1.5.15.tar.bz2'
-    sha256 '2642698204bbc5d9fd04c30f3507fa08a62fa3b0a21e53cdfd2c5a4530b69454'
+    # NOTE: when updating Wine, please check if Wine-Gecko and Wine-Mono needs
+    # updating too
+    #  * http://wiki.winehq.org/Gecko
+    #  * http://wiki.winehq.org/Mono
+    url 'http://downloads.sourceforge.net/project/wine/Source/wine-1.5.29.tar.bz2'
+    sha1 '19c2ee4e44d9ef4db32cb2c16e5603c195c8f42d'
   end
 
   env :std
 
+  # this tells Homebrew that dependencies must be built universal
+  def build.universal? ; true; end
+
   depends_on :x11
+  # note: we get freetype from :x11, but if the freetype formula has been installed
+  # separately and not built universal, it's going to get picked up and break the build
   depends_on 'jpeg'
   depends_on 'libicns'
+  depends_on 'libtiff'
+  depends_on 'little-cms'
+  depends_on 'gnutls' if build.devel?
 
   fails_with :llvm do
     build 2336
@@ -38,11 +53,11 @@ class Wine < Formula
   # Wine tests CFI support by calling clang, but then attempts to use as, which
   # does not work. Use clang for assembling too.
   def patches
-    DATA if ENV.compiler == :clang
+    DATA if ENV.compiler == :clang and !build.devel?
   end
 
   # the following libraries are currently not specified as dependencies, or not built as 32-bit:
-  # configure: libsane, libv4l, libgphoto2, liblcms, gstreamer-0.10, libcapi20, libgsm, libtiff
+  # configure: libsane, libv4l, libgphoto2, gstreamer-0.10, libcapi20, libgsm
 
   # Wine loads many libraries lazily using dlopen calls, so it needs these paths
   # to be searched by dyld.
@@ -61,6 +76,8 @@ class Wine < Formula
 
     ENV["LIBS"] = "-lGL -lGLU"
     ENV.append "CFLAGS", build32
+
+    # Still miscompiles at v1.5.25
     if ENV.compiler == :clang
       opoo <<-EOS.undent
         Clang currently miscompiles some parts of Wine. If you have gcc, you
@@ -68,15 +85,20 @@ class Wine < Formula
           brew install wine --use-gcc
       EOS
     end
+
     ENV.append "CXXFLAGS", "-D_DARWIN_NO_64_BIT_INODE"
     ENV.append "LDFLAGS", "#{build32} -framework CoreServices -lz -lGL -lGLU"
 
-    args = ["--prefix=#{prefix}",
-            "--x-include=#{MacOS::X11.include}",
-            "--x-lib=#{MacOS::X11.lib}",
-            "--with-x",
-            "--with-coreaudio",
-            "--with-opengl"]
+    # Workarounds for XCode not including pkg-config files
+    ENV.libxml2
+    ENV.append "LDFLAGS", "-lxslt"
+
+    args = %W[--prefix=#{prefix}
+              --with-coreaudio
+              --with-opengl
+              --with-x
+              --x-include=#{MacOS::X11.include}
+              --x-lib=#{MacOS::X11.lib}]
     args << "--disable-win16" if MacOS.version == :leopard or ENV.compiler == :clang
 
     # 64-bit builds of mpg123 are incompatible with 32-bit builds of Wine
@@ -88,9 +110,11 @@ class Wine < Formula
     # Don't need Gnome desktop support
     rm_rf share+'applications'
 
-    # Download Gecko once so we don't need to redownload for each prefix
+    # Download Gecko and Mono once so we don't need to redownload for each prefix
     gecko = WineGecko.new
     gecko.brew { (share+'wine/gecko').install Dir["*"] }
+    mono = WineMono.new
+    mono.brew { (share+'wine/mono').install Dir["*"] }
 
     # Use a wrapper script, so rename wine to wine.bin
     # and name our startup script wine
@@ -109,8 +133,8 @@ class Wine < Formula
       Or check out:
         http://code.google.com/p/osxwinebuilder/
     EOS
-    # see http://bugs.winehq.org/show_bug.cgi?id=31374
     unless build.stable?
+      # see http://bugs.winehq.org/show_bug.cgi?id=31374
       s += <<-EOS.undent
 
         The current version of Wine contains a partial implementation of dwrite.dll

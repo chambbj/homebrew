@@ -1,9 +1,11 @@
 require 'pathname'
 require 'exceptions'
 require 'macos'
+require 'vendor/multi_json'
+require 'open-uri'
 
 class Tty
-  class <<self
+  class << self
     def blue; bold 34; end
     def white; bold 39; end
     def red; underline 31; end
@@ -11,12 +13,18 @@ class Tty
     def reset; escape 0; end
     def em; underline 39; end
     def green; color 92 end
+    def gray; bold 30 end
 
     def width
       `/usr/bin/tput cols`.strip.to_i
     end
 
-  private
+    def truncate(str)
+      str.to_s[0, width - 4]
+    end
+
+    private
+
     def color n
       escape "0;#{n}"
     end
@@ -32,26 +40,25 @@ class Tty
   end
 end
 
-# args are additional inputs to puts until a nil arg is encountered
 def ohai title, *sput
-  title = title.to_s[0, Tty.width - 4] if $stdout.tty? unless ARGV.verbose?
+  title = Tty.truncate(title) if $stdout.tty? && !ARGV.verbose?
   puts "#{Tty.blue}==>#{Tty.white} #{title}#{Tty.reset}"
   puts sput unless sput.empty?
 end
 
 def oh1 title
-  title = title.to_s[0, Tty.width - 4] if $stdout.tty? unless ARGV.verbose?
-  puts "#{Tty.green}==> #{Tty.reset}#{title}"
+  title = Tty.truncate(title) if $stdout.tty? && !ARGV.verbose?
+  puts "#{Tty.green}==>#{Tty.white} #{title}#{Tty.reset}"
 end
 
 def opoo warning
-  puts "#{Tty.red}Warning#{Tty.reset}: #{warning}"
+  STDERR.puts "#{Tty.red}Warning#{Tty.reset}: #{warning}"
 end
 
 def onoe error
-  lines = error.to_s.split'\n'
-  puts "#{Tty.red}Error#{Tty.reset}: #{lines.shift}"
-  puts lines unless lines.empty?
+  lines = error.to_s.split("\n")
+  STDERR.puts "#{Tty.red}Error#{Tty.reset}: #{lines.shift}"
+  STDERR.puts lines unless lines.empty?
 end
 
 def ofail error
@@ -96,6 +103,14 @@ module Homebrew
     Process.wait
     $?.success?
   end
+end
+
+def with_system_path
+  old_path = ENV['PATH']
+  ENV['PATH'] = '/usr/bin:/bin'
+  yield
+ensure
+  ENV['PATH'] = old_path
 end
 
 # Kernel.system but with exceptions
@@ -151,12 +166,8 @@ def puts_columns items, star_items=[]
 end
 
 def which cmd
-  path = `/usr/bin/which #{cmd} 2>/dev/null`.chomp
-  if path.empty?
-    nil
-  else
-    Pathname.new(path)
-  end
+  dir = ENV['PATH'].split(':').find {|p| File.executable? File.join(p, cmd)}
+  Pathname.new(File.join(dir, cmd)) unless dir.nil?
 end
 
 def which_editor
@@ -174,11 +185,18 @@ end
 
 def exec_editor *args
   return if args.to_s.empty?
+  safe_exec(which_editor, *args)
+end
 
-  # Invoke bash to evaluate env vars in $EDITOR
-  # This also gets us proper argument quoting.
-  # See: https://github.com/mxcl/homebrew/issues/5123
-  system "bash", "-i", "-c", which_editor + ' "$@"', "--", *args
+def exec_browser *args
+  browser = ENV['HOMEBREW_BROWSER'] || ENV['BROWSER'] || "open"
+  safe_exec(browser, *args)
+end
+
+def safe_exec cmd, *args
+  # This buys us proper argument quoting and evaluation
+  # of environment variables in the cmd parameter.
+  exec "/bin/sh", "-i", "-c", cmd + ' "$@"', "--", *args
 end
 
 # GZips the given paths, and returns the gzipped paths
@@ -195,8 +213,8 @@ def archs_for_command cmd
   Pathname.new(cmd).archs
 end
 
-def inreplace path, before=nil, after=nil
-  [*path].each do |path|
+def inreplace paths, before=nil, after=nil
+  Array(paths).each do |path|
     f = File.open(path, 'r')
     s = f.read
 
@@ -241,6 +259,18 @@ def nostdout
 end
 
 module GitHub extend self
+  def open url, headers={}, &block
+    default_headers = {'User-Agent' => HOMEBREW_USER_AGENT}
+    default_headers['Authorization'] = "token #{HOMEBREW_GITHUB_API_TOKEN}" if HOMEBREW_GITHUB_API_TOKEN
+    Kernel.open(url, default_headers.merge(headers), &block)
+  rescue OpenURI::HTTPError => e
+    if e.io.meta['x-ratelimit-remaining'].to_i <= 0
+      raise "GitHub #{MultiJson.decode(e.io.read)['message']}"
+    else
+      raise e
+    end
+  end
+  
   def issues_for_formula name
     # bit basic as depends on the issue at github having the exact name of the
     # formula in it. Which for stuff like objective-caml is unlikely. So we
@@ -248,14 +278,11 @@ module GitHub extend self
 
     name = f.name if Formula === name
 
-    require 'open-uri'
-    require 'vendor/multi_json'
-
     issues = []
 
     uri = URI.parse("https://api.github.com/legacy/issues/search/mxcl/homebrew/open/#{name}")
 
-    open uri do |f|
+    GitHub.open uri do |f|
       MultiJson.decode(f.read)['issues'].each do |issue|
         # don't include issues that just refer to the tool in their body
         issues << issue['html_url'] if issue['title'].include? name
@@ -263,23 +290,16 @@ module GitHub extend self
     end
 
     issues
-  rescue
-    []
   end
 
   def find_pull_requests rx
-    require 'open-uri'
-    require 'vendor/multi_json'
-
     query = rx.source.delete('.*').gsub('\\', '')
     uri = URI.parse("https://api.github.com/legacy/issues/search/mxcl/homebrew/open/#{query}")
 
-    open uri do |f|
+    GitHub.open uri do |f|
       MultiJson.decode(f.read)['issues'].each do |pull|
         yield pull['pull_request_url'] if rx.match pull['title'] and pull['pull_request_url']
       end
     end
-  rescue
-    nil
   end
 end

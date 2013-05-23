@@ -4,43 +4,31 @@ class Dart < Formula
   homepage 'http://www.dartlang.org/'
 
   if MacOS.prefer_64_bit?
-    url 'https://gsdview.appspot.com/dart-editor-archive-integration/13679/dartsdk-macos-64.zip'
-    sha1 'b6f4902cbc48e59799980b2830108ccb2fe8d2b7'
+    url 'https://gsdview.appspot.com/dart-editor-archive-integration/22879/dartsdk-macos-64.zip'
+    sha1 '5022678a3bb06216f924b47ed8503174e6637c5e'
   else
-    url 'https://gsdview.appspot.com/dart-editor-archive-integration/13679/dartsdk-macos-32.zip'
-    sha1 'aa92ba954aa730e58216520f9ddd7c0489d7ae06'
+    url 'https://gsdview.appspot.com/dart-editor-archive-integration/22879/dartsdk-macos-32.zip'
+    sha1 'c75e9a4b977275fe35e036e6be1b14a68b80b431'
   end
 
-  version '13679'
-
-  def shim_script target
-    <<-EOS.undent
-      #!/bin/bash
-      exec dart "#{target}" "$@"
-    EOS
-  end
+  version '22879'
 
   def install
     libexec.install Dir['*']
-
-    bin.install_symlink libexec+'bin/dart'
-    (bin+'dart2js').write shim_script(libexec+'pkg/compiler/implementation/dart2js.dart')
-    (bin+'dartdoc').write shim_script(libexec+'pkg/dartdoc/bin/dartdoc.dart')
-    (bin+'pub').write shim_script(libexec+'util/pub/pub.dart')
+    bin.install_symlink "#{libexec}/bin/dart"
+    bin.write_exec_script Dir["#{libexec}/bin/{pub,dart?*}"]
   end
 
-  def test
-    mktemp do
-      (Pathname.pwd+'sample.dart').write <<-EOS.undent
+  test do
+    (testpath/'sample.dart').write <<-EOS.undent
       void main() {
         Options opts = new Options();
         for (String arg in opts.arguments) {
           print(arg);
         }
       }
-      EOS
+    EOS
 
-      `#{bin}/dart sample.dart test message` == "test\nmessage\n"
-    end
+    `#{bin}/dart sample.dart test message` == "test\nmessage\n"
   end
 end

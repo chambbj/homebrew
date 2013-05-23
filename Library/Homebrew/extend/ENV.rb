@@ -7,6 +7,7 @@ module HomebrewEnvExtension
     delete('CDPATH')
     delete('GREP_OPTIONS') # can break CMake (lol)
     delete('CLICOLOR_FORCE') # autotools doesn't like this
+    %w{CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH OBJC_INCLUDE_PATH}.each { |k| delete(k) }
     remove_cc_etc
 
     if MacOS.version >= :mountain_lion
@@ -33,6 +34,12 @@ module HomebrewEnvExtension
       self['CMAKE_PREFIX_PATH'] = "#{HOMEBREW_PREFIX}"
     end
 
+    if (HOMEBREW_PREFIX/'Frameworks').exist?
+      append 'CPPFLAGS', "-F#{HOMEBREW_PREFIX}/Frameworks"
+      append 'LDFLAGS', "-F#{HOMEBREW_PREFIX}/Frameworks"
+      self['CMAKE_FRAMEWORK_PATH'] = HOMEBREW_PREFIX/"Frameworks"
+    end
+
     # Os is the default Apple uses for all its stuff so let's trust them
     set_cflags "-Os #{SAFE_CFLAGS_FLAGS}"
 
@@ -43,9 +50,8 @@ module HomebrewEnvExtension
     unless self['CC']
       @compiler = MacOS.default_compiler
       self.send @compiler
-      self['CC'] = MacOS.locate("cc")
-      self['CXX'] = MacOS.locate("c++")
-      self['OBJC'] = self['CC']
+      self['CC'] = self['OBJC'] = MacOS.locate("cc")
+      self['CXX'] = self['OBJCXX'] = MacOS.locate("c++")
     end
 
     # Add lib and include etc. from the current macosxsdk to compiler flags:
@@ -64,7 +70,7 @@ module HomebrewEnvExtension
     paths = []
     paths << HOMEBREW_PREFIX/'lib/pkgconfig'
     paths << HOMEBREW_PREFIX/'share/pkgconfig'
-    paths << HOMEBREW_REPOSITORY/'Library/Homebrew/pkgconfig' if MacOS.version >= :mountain_lion
+    paths << HOMEBREW_REPOSITORY/"Library/ENV/pkgconfig/#{MacOS.version}"
     paths << '/usr/lib/pkgconfig'
     paths.select { |d| File.directory? d }.join(':')
   end
@@ -112,11 +118,11 @@ module HomebrewEnvExtension
 
   def gcc_4_0_1
     # we don't use locate because gcc 4.0 has not been provided since Xcode 4
-    self['CC'] = "#{MacOS.dev_tools_path}/gcc-4.0"
-    self['CXX'] = "#{MacOS.dev_tools_path}/g++-4.0"
-    self['OBJC'] = self['CC']
+    self['CC'] = self['OBJC'] = "#{MacOS.dev_tools_path}/gcc-4.0"
+    self['CXX'] = self['OBJCXX'] = "#{MacOS.dev_tools_path}/g++-4.0"
     replace_in_cflags '-O4', '-O3'
-    set_cpu_cflags 'nocona -mssse3', :core => 'prescott', :bottle => 'generic'
+    set_cpu_cflags '-march=nocona -mssse3',
+      Hardware::CPU.optimization_flags
     @compiler = :gcc
   end
   alias_method :gcc_4_0, :gcc_4_0_1
@@ -128,6 +134,7 @@ module HomebrewEnvExtension
     self['CXX'] =~ %r{/usr/bin/xcrun (.*)}
     self['CXX'] = `/usr/bin/xcrun -find #{$1}`.chomp if $1
     self['OBJC'] = self['CC']
+    self['OBJCXX'] = self['CXX']
   end
 
   def gcc
@@ -135,14 +142,12 @@ module HomebrewEnvExtension
     # However they still provide a gcc symlink to llvm
     # But we don't want LLVM of course.
 
-    self['CC'] = MacOS.locate "gcc-4.2"
-    self['CXX'] = MacOS.locate "g++-4.2"
-    self['OBJC'] = self['CC']
+    self['CC'] = self['OBJC'] = MacOS.locate("gcc-4.2")
+    self['CXX'] = self['OBJCXX'] = MacOS.locate("g++-4.2")
 
     unless self['CC']
-      self['CC'] = "#{HOMEBREW_PREFIX}/bin/gcc-4.2"
-      self['CXX'] = "#{HOMEBREW_PREFIX}/bin/g++-4.2"
-      self['OBJC'] = self['CC']
+      self['CC'] = self['OBJC'] = "#{HOMEBREW_PREFIX}/bin/gcc-4.2"
+      self['CXX'] = self['OBJCXX'] = "#{HOMEBREW_PREFIX}/bin/g++-4.2"
       raise "GCC could not be found" unless File.exist? self['CC']
     end
 
@@ -151,26 +156,24 @@ module HomebrewEnvExtension
     end
 
     replace_in_cflags '-O4', '-O3'
-    set_cpu_cflags 'core2 -msse4', :penryn => 'core2 -msse4.1', :core2 => 'core2', :core => 'prescott', :bottle => 'generic'
+    set_cpu_cflags '-march=core2 -msse4', Hardware::CPU.optimization_flags
     @compiler = :gcc
   end
   alias_method :gcc_4_2, :gcc
 
   def llvm
-    self['CC'] = MacOS.locate "llvm-gcc"
-    self['CXX'] = MacOS.locate "llvm-g++"
-    self['OBJC'] = self['CC']
-    set_cpu_cflags 'core2 -msse4', :penryn => 'core2 -msse4.1', :core2 => 'core2', :core => 'prescott'
+    self['CC'] = self['OBJC'] = MacOS.locate("llvm-gcc")
+    self['CXX'] = self['OBJCXX'] = MacOS.locate("llvm-g++")
+    set_cpu_cflags '-march=core2 -msse4', Hardware::CPU.optimization_flags
     @compiler = :llvm
   end
 
   def clang
-    self['CC'] = MacOS.locate "clang"
-    self['CXX'] = MacOS.locate "clang++"
-    self['OBJC'] = self['CC']
+    self['CC'] = self['OBJC'] = MacOS.locate("clang")
+    self['CXX'] = self['OBJCXX'] = MacOS.locate("clang++")
     replace_in_cflags(/-Xarch_i386 (-march=\S*)/, '\1')
     # Clang mistakenly enables AES-NI on plain Nehalem
-    set_cpu_cflags 'native', :nehalem => 'native -Xclang -target-feature -Xclang -aes'
+    set_cpu_cflags '-march=native', :nehalem => '-march=native -Xclang -target-feature -Xclang -aes'
     append_to_cflags '-Qunused-arguments'
     @compiler = :clang
   end
@@ -200,6 +203,7 @@ module HomebrewEnvExtension
   end
 
   def macosxsdk v=MacOS.version
+    return unless MACOS
     # Sets all needed lib and include dirs to CFLAGS, CPPFLAGS, LDFLAGS.
     remove_macosxsdk
     # Allow cool style of ENV.macosxsdk 10.8 here (no "" :)
@@ -322,10 +326,10 @@ module HomebrewEnvExtension
     append flags, xarch unless xarch.empty?
 
     if ARGV.build_bottle?
-      append flags, '-mtune=' + map.fetch(:bottle) if map.has_key? :bottle
+      append flags, Hardware::CPU.optimization_flags[MacOS.oldest_cpu]
     else
       # Don't set -msse3 and older flags because -march does that for us
-      append flags, '-march=' + map.fetch(Hardware.intel_family, default)
+      append flags, map.fetch(Hardware::CPU.family, default)
     end
 
     # not really a 'CPU' cflag, but is only used with clang
@@ -373,7 +377,7 @@ end
 
 class << ENV
   def remove_cc_etc
-    keys = %w{CC CXX LD CPP CFLAGS CXXFLAGS OBJCFLAGS OBJCXXFLAGS LDFLAGS CPPFLAGS}
+    keys = %w{CC CXX OBJC OBJCXX LD CPP CFLAGS CXXFLAGS OBJCFLAGS OBJCXXFLAGS LDFLAGS CPPFLAGS}
     removed = Hash[*keys.map{ |key| [key, self[key]] }.flatten]
     keys.each do |key|
       delete(key)
@@ -389,9 +393,9 @@ class << ENV
   def remove_from_cflags f
     remove cc_flag_vars, f
   end
-  def append key, value, separator = ' '
+  def append keys, value, separator = ' '
     value = value.to_s
-    [*key].each do |key|
+    Array(keys).each do |key|
       unless self[key].to_s.empty?
         self[key] = self[key] + separator + value.to_s
       else
@@ -399,8 +403,8 @@ class << ENV
       end
     end
   end
-  def prepend key, value, separator = ' '
-    [*key].each do |key|
+  def prepend keys, value, separator = ' '
+    Array(keys).each do |key|
       unless self[key].to_s.empty?
         self[key] = value.to_s + separator + self[key]
       else
@@ -411,8 +415,8 @@ class << ENV
   def prepend_path key, path
     prepend key, path, ':' if File.directory? path
   end
-  def remove key, value
-    [*key].each do |key|
+  def remove keys, value
+    Array(keys).each do |key|
       next unless self[key]
       self[key] = self[key].sub(value, '')
       delete(key) if self[key].to_s.empty?
@@ -429,6 +433,19 @@ class << ENV
   # See: http://bugs.python.org/issue6848
   def ncurses_define
     append 'CPPFLAGS', "-DNCURSES_OPAQUE=0"
+  end
+
+  def userpaths!
+    paths = ORIGINAL_PATHS.map { |p| p.realpath.to_s rescue nil } - %w{/usr/X11/bin /opt/X11/bin}
+    self['PATH'] = paths.unshift(*self['PATH'].split(":")).uniq.join(":")
+  end
+
+  def with_build_environment
+    old_env = to_hash
+    setup_build_environment
+    yield
+  ensure
+    replace(old_env)
   end
 
   def fortran
@@ -451,7 +468,8 @@ class << ENV
         flags_to_set.each {|key| self[key] = cflags}
 
         # Ensure we use architecture optimizations for GCC 4.2.x
-        set_cpu_flags flags_to_set, 'core2 -msse4', :penryn => 'core2 -msse4.1', :core2 => 'core2', :core => 'prescott', :bottle => 'generic'
+        set_cpu_flags flags_to_set, '-march=core2 -msse4',
+          Hardware::CPU.optimization_flags
       elsif not self['FCFLAGS'] or self['FFLAGS']
         opoo <<-EOS.undent
           No Fortran optimization information was provided.  You may want to consider
@@ -463,15 +481,16 @@ class << ENV
         EOS
       end
 
-    elsif `/usr/bin/which gfortran`.chuzzle
+    elsif which 'gfortran'
       ohai "Using Homebrew-provided fortran compiler."
       puts "This may be changed by setting the FC environment variable."
-      self['FC'] = `/usr/bin/which gfortran`.chomp
+      self['FC'] = which 'gfortran'
       self['F77'] = self['FC']
 
       fc_flag_vars.each {|key| self[key] = cflags}
       # Ensure we use architecture optimizations for GCC 4.2.x
-      set_cpu_flags fc_flag_vars, 'core2 -msse4', :penryn => 'core2 -msse4.1', :core2 => 'core2', :core => 'prescott', :bottle => 'generic'
+      set_cpu_flags fc_flag_vars, '-march=core2 -msse4',
+        Hardware::CPU.optimization_flags
 
     else
       onoe <<-EOS

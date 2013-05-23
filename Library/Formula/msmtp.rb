@@ -2,8 +2,8 @@ require 'formula'
 
 class Msmtp < Formula
   homepage 'http://msmtp.sourceforge.net'
-  url 'http://downloads.sourceforge.net/project/msmtp/msmtp/1.4.28/msmtp-1.4.28.tar.bz2'
-  sha1 '3fd44b30e8f4ae071b2a5a205d6007f3465fa970'
+  url 'http://downloads.sourceforge.net/project/msmtp/msmtp/1.4.31/msmtp-1.4.31.tar.bz2'
+  sha1 'c0edce1e1951968853f15209c8509699ff9e9ab5'
 
   option 'with-macosx-keyring', "Support Mac OS X Keyring"
 

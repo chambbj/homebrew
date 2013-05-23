@@ -2,8 +2,8 @@ require 'formula'
 
 class CssCrush < Formula
   homepage 'http://the-echoplex.net/csscrush'
-  url 'https://github.com/peteboere/css-crush/tarball/v1.7'
-  sha1 '44a29abccc55f8a098bc381138cb03280dd9c2a7'
+  url 'https://github.com/peteboere/css-crush/archive/v1.10.tar.gz'
+  sha1 'aa8b0f495aad298c3bf90edc271741d30271917a'
 
   def install
     libexec.install Dir['*']

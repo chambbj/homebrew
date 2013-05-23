@@ -2,8 +2,8 @@ require 'formula'
 
 class ScalaDocs < Formula
   homepage 'http://www.scala-lang.org/'
-  url 'http://www.scala-lang.org/downloads/distrib/files/scala-docs-2.9.2.zip'
-  sha1 'b49ef500314d968ddbd683b64628925a747f35e5'
+  url 'http://www.scala-lang.org/downloads/distrib/files/scala-docs-2.10.1.zip'
+  sha1 '7ff73776f7af9d6b2d5081a3a6ffa2a442640a59'
 end
 
 class ScalaCompletion < Formula
@@ -15,8 +15,8 @@ end
 
 class Scala < Formula
   homepage 'http://www.scala-lang.org/'
-  url 'http://www.scala-lang.org/downloads/distrib/files/scala-2.9.2.tgz'
-  sha1 '806fc1d91bda82d6a584172d7742531386ae68fb'
+  url 'http://www.scala-lang.org/downloads/distrib/files/scala-2.10.1.tgz'
+  sha1 '589cc2ba688510f2ec169837b44be5db9fd538b6'
 
   option 'with-docs', 'Also install library documentation'
 
@@ -26,7 +26,7 @@ class Scala < Formula
     man1.install Dir['man/man1/*']
     libexec.install Dir['*']
     bin.install_symlink Dir["#{libexec}/bin/*"]
-    ScalaCompletion.new.brew { (prefix/'etc/bash_completion.d').install 'scala' }
+    ScalaCompletion.new.brew { bash_completion.install 'scala' }
     ScalaDocs.new.brew { doc.install Dir['*'] } if build.include? 'with-docs'
   end
 end
