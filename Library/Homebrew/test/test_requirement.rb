@@ -81,6 +81,7 @@ class RequirementTests < Test::Unit::TestCase
     ENV.expects(:userpaths!)
     ENV.expects(:append).with("PATH", which_path.parent, ":")
 
+    req.satisfied?
     req.modify_build_environment
   end
 
@@ -95,5 +96,43 @@ class RequirementTests < Test::Unit::TestCase
     assert_equal "foo", klass.const_get(const).new.name
   ensure
     klass.send(:remove_const, const) if klass.const_defined?(const)
+  end
+
+  def test_dsl_default_formula
+    req = Class.new(Requirement) { default_formula 'foo' }.new
+    assert req.default_formula?
+  end
+
+  def test_to_dependency
+    req = Class.new(Requirement) { default_formula 'foo' }.new
+    assert_equal Dependency.new('foo'), req.to_dependency
+  end
+
+  def test_to_dependency_calls_requirement_modify_build_environment
+    error = Class.new(StandardError)
+
+    req = Class.new(Requirement) do
+      default_formula 'foo'
+      satisfy { true }
+      env { raise error }
+    end.new
+
+    assert_raises(error) do
+      req.to_dependency.modify_build_environment
+    end
+  end
+
+  def test_eql
+    a, b = Requirement.new, Requirement.new
+    assert a.eql?(b)
+    assert b.eql?(a)
+    assert_equal a.hash, b.hash
+  end
+
+  def test_not_eql
+    a, b = Requirement.new([:optional]), Requirement.new
+    assert_not_equal a.hash, b.hash
+    assert !a.eql?(b)
+    assert !b.eql?(a)
   end
 end

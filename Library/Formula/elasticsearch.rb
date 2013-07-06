@@ -2,8 +2,8 @@ require 'formula'
 
 class Elasticsearch < Formula
   homepage 'http://www.elasticsearch.org'
-  url 'https://download.elasticsearch.org/elasticsearch/elasticsearch/elasticsearch-0.90.0.tar.gz'
-  sha1 '92b8c07b51cedda7c8148eceb23bbcb79bccf230'
+  url 'https://download.elasticsearch.org/elasticsearch/elasticsearch/elasticsearch-0.90.2.tar.gz'
+  sha1 'b09f5c656912e5c08c9eefa7e95566f1ba7a1ea5'
 
   head 'https://github.com/elasticsearch/elasticsearch.git'
 
@@ -39,11 +39,6 @@ class Elasticsearch < Formula
       rm_rf "#{prefix}/target/"
     end
 
-    # Make sure runtime directories exist
-    (var/"elasticsearch/#{cluster_name}").mkpath
-    (var/"log/elasticsearch").mkpath
-    (var/"lib/elasticsearch/plugins").mkpath
-
     # Set up ElasticSearch for local development:
     inreplace "#{prefix}/config/elasticsearch.yml" do |s|
       # 1. Give the cluster a unique name
@@ -71,6 +66,13 @@ class Elasticsearch < Formula
       # Replace paths to use libexec instead of lib
       s.gsub! /\$ES_HOME\/lib\//, "$ES_CLASSPATH/"
     end
+  end
+
+  def post_install
+    # Make sure runtime directories exist
+    (var/"elasticsearch/#{cluster_name}").mkpath
+    (var/"log/elasticsearch").mkpath
+    (var/"lib/elasticsearch/plugins").mkpath
   end
 
   def caveats; <<-EOS.undent
