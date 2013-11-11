@@ -2,9 +2,9 @@ require 'formula'
 
 class PerconaServer < Formula
   homepage 'http://www.percona.com'
-  url 'http://www.percona.com/redir/downloads/Percona-Server-5.5/Percona-Server-5.5.30-30.2/source/Percona-Server-5.5.30-rel30.2.tar.gz'
-  version '5.5.30-30.2'
-  sha1 'e876f00b6fbee0791b13ed40c3642fecc5cc76e6'
+  url 'http://www.percona.com/redir/downloads/Percona-Server-5.6/LATEST/release-5.6.14-62.0/483/source/Percona-Server-5.6.14-rel62.0.tar.gz'
+  version '5.6.14-rel62.0'
+  sha1 '6d9ddd92338c70ec13bdeb9a23568a990a5766f9'
 
   depends_on 'cmake' => :build
   depends_on 'readline'
@@ -16,14 +16,9 @@ class PerconaServer < Formula
   option 'with-libedit', 'Compile with editline wrapper instead of readline'
   option 'enable-local-infile', 'Build with local infile loading support'
 
-  conflicts_with 'mysql',
-    :because => "percona-server and mysql install the same binaries."
 
-  conflicts_with 'mariadb',
-    :because => "percona-server and mariadb install the same binaries."
-
-  conflicts_with 'mysql-cluster',
-    :because => "percona-server and mysql-cluster install the same binaries."
+  conflicts_with 'mariadb', 'mysql', 'mysql-cluster',
+    :because => "percona, mariadb, and mysql install the same binaries."
 
   env :std if build.universal?
 
@@ -37,6 +32,13 @@ class PerconaServer < Formula
   # shared with the mysql and mariadb formulae.
   def destination
     @destination ||= (var/'percona').directory? ? 'percona' : 'mysql'
+  end
+
+  def patches
+    # Fixes percona server 5.6 compilation on OS X 10.9, based on
+    # https://github.com/mxcl/homebrew/commit/aad5d93f4fabbf69766deb83780d3a6eeab7061a
+    # for mysql 5.6
+    "https://gist.github.com/israelshirk/7cc640498cf264ebfce3/raw/846839c84647c4190ad683e4cbf0fabcd8931f97/gistfile1.txt"
   end
 
   def install
@@ -81,13 +83,16 @@ class PerconaServer < Formula
     args << "-DWITH_READLINE=yes" unless build.include? 'with-libedit'
 
     # Make universal for binding to universal applications
-    args << "-DCMAKE_OSX_ARCHITECTURES='i386;x86_64'" if build.universal?
+    args << "-DCMAKE_OSX_ARCHITECTURES='#{Hardware::CPU.universal_archs.as_cmake_arch_flags}'" if build.universal?
 
     # Build with local infile loading support
     args << "-DENABLED_LOCAL_INFILE=1" if build.include? 'enable-local-infile'
 
     system "cmake", *args
     system "make"
+    # Reported upstream:
+    # http://bugs.mysql.com/bug.php?id=69645
+    inreplace "scripts/mysql_config", / +-Wno[\w-]+/, ""
     system "make install"
 
     # Don't create databases inside of the prefix!
@@ -103,6 +108,10 @@ class PerconaServer < Formula
     end
 
     ln_s "#{prefix}/support-files/mysql.server", bin
+
+    # Move mysqlaccess to libexec
+    mv "#{bin}/mysqlaccess", libexec
+    mv "#{bin}/mysqlaccess.conf", libexec
   end
 
   def caveats; <<-EOS.undent

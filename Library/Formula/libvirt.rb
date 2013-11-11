@@ -2,8 +2,8 @@ require 'formula'
 
 class Libvirt < Formula
   homepage 'http://www.libvirt.org'
-  url 'http://libvirt.org/sources/libvirt-1.1.0.tar.gz'
-  sha256 'ce9e765697ecb595469489665043ce221d9b70babc16fec77ee938fe37676928'
+  url 'http://libvirt.org/sources/libvirt-1.1.4.tar.gz'
+  sha256 '5910f5cf607a50c606d959e6b1e5d6e67966b7aa7324982afd7f85d9c24bd98f'
 
   option 'without-libvirtd', 'Build only the virsh client and development libraries'
 
@@ -13,7 +13,7 @@ class Libvirt < Formula
   depends_on 'yajl'
   depends_on :python => :recommended
 
-  if MacOS.version == :leopard
+  if MacOS.version <= :leopard
     # Definitely needed on Leopard, but not on Snow Leopard.
     depends_on "readline"
     depends_on "libxml2"
@@ -63,7 +63,7 @@ class Libvirt < Formula
   end
 
   test do
-    if build.with? 'python'
+    python do
       # Testing to import the mod because that is a .so file where linking
       # can break.
       system python, '-c', "import libvirtmod"

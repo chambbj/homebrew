@@ -2,18 +2,14 @@ require 'formula'
 
 class Beansdb < Formula
   homepage 'https://github.com/douban/beansdb'
-  url 'https://github.com/douban/beansdb/archive/v0.5.9.tar.gz'
-  sha1 '79dc0f48d00d1820b4310136936c536316cc1c08'
-
   head 'https://github.com/douban/beansdb.git', :branch => 'master'
+  url 'https://github.com/douban/beansdb/archive/v0.6.tar.gz'
+  sha1 '9099ce607ff3c3eba251ee34ae65a08c4e3715b9'
 
   depends_on :automake
 
-  fails_with :clang do
-    build 425
-  end
-
   def install
+    ENV.append 'CFLAGS', '-std=gnu89'
     system "./autogen.sh"
     system "./configure", "--prefix=#{prefix}"
 

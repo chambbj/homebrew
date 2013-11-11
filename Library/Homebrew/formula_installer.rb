@@ -1,5 +1,6 @@
 # encoding: UTF-8
 
+require 'cxxstdlib'
 require 'exceptions'
 require 'formula'
 require 'keg'
@@ -7,8 +8,12 @@ require 'tab'
 require 'bottles'
 require 'caveats'
 require 'cleaner'
+require 'formula_cellar_checks'
+require 'install_renamed'
 
 class FormulaInstaller
+  include FormulaCellarChecks
+
   attr_reader :f
   attr_accessor :tab, :options, :ignore_deps
   attr_accessor :show_summary_heading, :show_header
@@ -26,8 +31,9 @@ class FormulaInstaller
     check_install_sanity
   end
 
-  def pour_bottle? warn=false
-    tab.used_options.empty? && options.empty? && install_bottle?(f, warn)
+  def pour_bottle? install_bottle_options={:warn=>false}
+    tab.used_options.empty? && options.empty? && \
+      install_bottle?(f, install_bottle_options)
   end
 
   def check_install_sanity
@@ -35,7 +41,7 @@ class FormulaInstaller
 
     if f.installed?
       msg = "#{f}-#{f.installed_version} already installed"
-      msg << ", it's just not linked" if not f.linked_keg.symlink? and not f.keg_only?
+      msg << ", it's just not linked" unless f.linked_keg.symlink? or f.keg_only?
       raise FormulaAlreadyInstalledError, msg
     end
 
@@ -67,6 +73,18 @@ class FormulaInstaller
     raise
   end
 
+  def build_bottle_preinstall
+    @etc_var_glob ||= "#{HOMEBREW_PREFIX}/{etc,var}/**/*"
+    @etc_var_preinstall = Dir[@etc_var_glob]
+  end
+
+  def build_bottle_postinstall
+    @etc_var_postinstall = Dir[@etc_var_glob]
+    (@etc_var_postinstall - @etc_var_preinstall).each do |file|
+      Pathname.new(file).cp_path_sub(HOMEBREW_PREFIX, f.bottle_prefix)
+    end
+  end
+
   def install
     # not in initialize so upgrade can unlink the active keg before calling this
     # function but after instantiating this class so that it can avoid having to
@@ -87,18 +105,28 @@ class FormulaInstaller
       install_dependencies
     end
 
+    if ARGV.build_bottle? && (arch = ARGV.bottle_arch) && !Hardware::CPU.optimization_flags.include?(arch)
+      raise "Unrecognized architecture for --bottle-arch: #{arch}"
+    end
+
     oh1 "Installing #{Tty.green}#{f}#{Tty.reset}" if show_header
 
     @@attempted << f
 
     @poured_bottle = false
+
     begin
-      if pour_bottle? true
+      if pour_bottle? :warn => true
         pour
         @poured_bottle = true
+
+        stdlibs = Keg.new(f.prefix).detect_cxx_stdlibs
+        stdlib_in_use = CxxStdlib.new(stdlibs.first, MacOS.default_compiler)
+        stdlib_in_use.check_dependencies(f, f.recursive_dependencies)
+
         tab = Tab.for_keg f.prefix
         tab.poured_from_bottle = true
-        tab.tabfile.delete rescue nil
+        tab.tabfile.delete if tab.tabfile
         tab.write
       end
     rescue
@@ -106,12 +134,20 @@ class FormulaInstaller
       opoo "Bottle installation failed: building from source."
     end
 
+    build_bottle_preinstall if ARGV.build_bottle?
+
     unless @poured_bottle
       build
       clean
     end
 
-    f.post_install
+    build_bottle_postinstall if ARGV.build_bottle?
+
+    begin
+      f.post_install
+    rescue
+      opoo "#{f.name} post_install failed. Rerun with `brew postinstall #{f.name}`."
+    end
 
     opoo "Nothing was installed to #{f.prefix}" unless f.installed?
   end
@@ -166,16 +202,22 @@ class FormulaInstaller
   # All dependencies that we must install before installing f.
   # These do not honor flags like --HEAD and --devel.
   def necessary_deps
+    # FIXME: can't check this inside the block for the top-level dependent
+    # because it depends on the contents of ARGV.
+    pour_bottle = pour_bottle?
+
     ARGV.filter_for_dependencies do
       f.recursive_dependencies do |dependent, dep|
         dep.universal! if f.build.universal? && !dep.build?
 
         if (dep.optional? || dep.recommended?) && dependent.build.without?(dep.name)
           Dependency.prune
-        elsif dep.build? && install_bottle?(dependent)
+        elsif dep.build? && dependent == f && pour_bottle
+          Dependency.prune
+        elsif dep.build? && dependent != f && install_bottle?(dependent)
           Dependency.prune
         elsif dep.satisfied?
-          Dependency.prune
+          Dependency.skip
         elsif dep.installed?
           raise UnsatisfiedDependencyError.new(f, dep)
         end
@@ -194,6 +236,10 @@ class FormulaInstaller
   end
 
   def install_dependencies
+    if effective_deps.length > 1
+      oh1 "Installing dependencies for #{f}: #{Tty.green}#{effective_deps*", "}#{Tty.reset}"
+    end
+
     effective_deps.each do |dep|
       if dep.requested?
        install_dependency(dep)
@@ -227,12 +273,12 @@ class FormulaInstaller
   end
 
   def caveats
-    if (not f.keg_only?) and ARGV.homebrew_developer?
+    if ARGV.homebrew_developer? and not f.keg_only?
       audit_bin
       audit_sbin
       audit_lib
-      check_manpages
-      check_infopages
+      audit_man
+      audit_info
     end
 
     c = Caveats.new(f)
@@ -257,10 +303,9 @@ class FormulaInstaller
       end
     else
       link
-      check_PATH unless f.keg_only?
     end
 
-    fix_install_names
+    fix_install_names if OS.mac?
 
     ohai "Summary" if ARGV.verbose? or show_summary_heading
     unless ENV['HOMEBREW_NO_EMOJI']
@@ -331,14 +376,13 @@ class FormulaInstaller
       write.close
       Process.wait
       data = read.read
+      read.close
       raise Marshal.load(data) unless data.nil? or data.empty?
       raise Interrupt if $?.exitstatus == 130
       raise "Suspicious installation failure" unless $?.success?
     end
 
     raise "Empty installation" if Dir["#{f.prefix}/*"].empty?
-
-    Tab.create(f, build_argv).write # INSTALL_RECEIPT.json
 
   rescue Exception
     ignore_interrupts do
@@ -384,7 +428,7 @@ class FormulaInstaller
   end
 
   def fix_install_names
-    Keg.new(f.prefix).fix_install_names
+    Keg.new(f.prefix).fix_install_names(:keg_only => f.keg_only?)
     if @poured_bottle and f.bottle
       old_prefix = f.bottle.prefix
       new_prefix = HOMEBREW_PREFIX.to_s
@@ -393,7 +437,7 @@ class FormulaInstaller
 
       if old_prefix != new_prefix or old_cellar != new_cellar
         Keg.new(f.prefix).relocate_install_names \
-          old_prefix, new_prefix, old_cellar, new_cellar
+          old_prefix, new_prefix, old_cellar, new_cellar, :keg_only => f.keg_only?
       end
     end
   rescue Exception => e
@@ -423,124 +467,56 @@ class FormulaInstaller
   end
 
   def pour
-    downloader = f.downloader
-    if downloader.local_bottle_path
-      downloader = LocalBottleDownloadStrategy.new f,
-                     downloader.local_bottle_path
+    if f.local_bottle_path
+      downloader = LocalBottleDownloadStrategy.new(f)
     else
+      downloader = f.downloader
       fetched = f.fetch
       f.verify_download_integrity fetched
     end
     HOMEBREW_CELLAR.cd do
       downloader.stage
     end
+
+    Dir["#{f.bottle_prefix}/{etc,var}/**/*"].each do |file|
+      path = Pathname.new(file)
+      path.extend(InstallRenamed)
+      path.cp_path_sub(f.bottle_prefix, HOMEBREW_PREFIX)
+    end
+    FileUtils.rm_rf f.bottle_prefix
   end
 
   ## checks
 
-  def check_PATH
-    # warn the user if stuff was installed outside of their PATH
-    [f.bin, f.sbin].each do |bin|
-      if bin.directory? and bin.children.length > 0
-        bin = (HOMEBREW_PREFIX/bin.basename).realpath
-        unless ORIGINAL_PATHS.include? bin
-          opoo "#{bin} is not in your PATH"
-          puts "You can amend this by altering your ~/.bashrc file"
-          @show_summary_heading = true
-        end
-      end
-    end
-  end
-
-  def check_manpages
-    # Check for man pages that aren't in share/man
-    if (f.prefix+'man').directory?
-      opoo 'A top-level "man" directory was found.'
-      puts "Homebrew requires that man pages live under share."
-      puts 'This can often be fixed by passing "--mandir=#{man}" to configure.'
-      @show_summary_heading = true
-      Homebrew.failed = true # fatal to Brew Bot
-    end
-  end
-
-  def check_infopages
-    # Check for info pages that aren't in share/info
-    if (f.prefix+'info').directory?
-      opoo 'A top-level "info" directory was found.'
-      puts "Homebrew suggests that info pages live under share."
-      puts 'This can often be fixed by passing "--infodir=#{info}" to configure.'
-      @show_summary_heading = true
-    end
-  end
-
-  def check_jars
-    return unless f.lib.directory?
-
-    jars = f.lib.children.select{|g| g.to_s =~ /\.jar$/}
-    unless jars.empty?
-      opoo 'JARs were installed to "lib".'
-      puts "Installing JARs to \"lib\" can cause conflicts between packages."
-      puts "For Java software, it is typically better for the formula to"
-      puts "install to \"libexec\" and then symlink or wrap binaries into \"bin\"."
-      puts "See \"activemq\", \"jruby\", etc. for examples."
-      puts "The offending files are:"
-      puts jars
-      @show_summary_heading = true
-    end
-  end
-
-  def check_non_libraries
-    return unless f.lib.directory?
-
-    valid_extensions = %w(.a .dylib .framework .jnilib .la .o .so
-                          .jar .prl .pm .sh)
-    non_libraries = f.lib.children.select do |g|
-      next if g.directory?
-      not valid_extensions.include? g.extname
-    end
-
-    unless non_libraries.empty?
-      opoo 'Non-libraries were installed to "lib".'
-      puts "Installing non-libraries to \"lib\" is bad practice."
-      puts "The offending files are:"
-      puts non_libraries
-      @show_summary_heading = true
-    end
+  def print_check_output warning_and_description
+    return unless warning_and_description
+    warning, description = *warning_and_description
+    opoo warning
+    puts description
+    @show_summary_heading = true
   end
 
   def audit_bin
-    return unless f.bin.directory?
-
-    non_exes = f.bin.children.select { |g| g.directory? or not g.executable? }
-
-    unless non_exes.empty?
-      opoo 'Non-executables were installed to "bin".'
-      puts "Installing non-executables to \"bin\" is bad practice."
-      puts "The offending files are:"
-      puts non_exes
-      @show_summary_heading = true
-      Homebrew.failed = true # fatal to Brew Bot
-    end
+    print_check_output(check_PATH(f.bin)) unless f.keg_only?
+    print_check_output(check_non_executables(f.bin))
   end
 
   def audit_sbin
-    return unless f.sbin.directory?
-
-    non_exes = f.sbin.children.select { |g| g.directory? or not g.executable? }
-
-    unless non_exes.empty?
-      opoo 'Non-executables were installed to "sbin".'
-      puts "Installing non-executables to \"sbin\" is bad practice."
-      puts "The offending files are:"
-      puts non_exes
-      @show_summary_heading = true
-      Homebrew.failed = true # fatal to Brew Bot
-    end
+    print_check_output(check_PATH(f.sbin)) unless f.keg_only?
+    print_check_output(check_non_executables(f.sbin))
   end
 
   def audit_lib
-    check_jars
-    check_non_libraries
+    print_check_output(check_jars)
+    print_check_output(check_non_libraries)
+  end
+
+  def audit_man
+    print_check_output(check_manpages)
+  end
+
+  def audit_info
+    print_check_output(check_infopages)
   end
 
   private

@@ -15,15 +15,15 @@ end
 
 class Squid < Formula
   homepage 'http://www.squid-cache.org/'
-  url 'http://www.squid-cache.org/Versions/v3/3.3/squid-3.3.5.tar.gz'
-  sha1 '66210259645f50bd4af0f6aa4e871381c0bf35be'
+  url 'http://www.squid-cache.org/Versions/v3/3.3/squid-3.3.10.tar.gz'
+  sha1 '2855dd88a6b0a37253a2f4aea77964c95f44bf7f'
 
   depends_on NoBdb5
 
   def install
     # For --disable-eui, see:
     # http://squid-web-proxy-cache.1019090.n4.nabble.com/ERROR-ARP-MAC-EUI-operations-not-supported-on-this-operating-system-td4659335.html
-    args =%W[
+    args = %W[
       --disable-debug
       --disable-dependency-tracking
       --prefix=#{prefix}
@@ -52,7 +52,6 @@ class Squid < Formula
         <string>#{opt_prefix}/sbin/squid</string>
         <string>-N</string>
         <string>-d 1</string>
-        <string>-D</string>
       </array>
       <key>RunAtLoad</key>
       <true/>

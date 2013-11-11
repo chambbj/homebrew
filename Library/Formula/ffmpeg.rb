@@ -2,10 +2,17 @@ require 'formula'
 
 class Ffmpeg < Formula
   homepage 'http://ffmpeg.org/'
-  url 'http://ffmpeg.org/releases/ffmpeg-1.2.1.tar.bz2'
-  sha1 '930e5612d75d04fdf7c0579f4d85d47e31e38945'
+  url 'http://ffmpeg.org/releases/ffmpeg-1.2.4.tar.bz2'
+  sha1 'ee73a05bde209fc23441c7e49767c1b7a4b6f124'
 
   head 'git://git.videolan.org/ffmpeg.git'
+
+  # This is actually the new stable, not a devel release,
+  # but not everything builds with it yet - notably gpac
+  devel do
+    url 'http://ffmpeg.org/releases/ffmpeg-2.1.tar.bz2'
+    sha1 'b8336772bfa957ca4943831f26aa99e4f30688d5'
+  end
 
   option "without-x264", "Disable H.264 encoder"
   option "without-lame", "Disable MP3 encoder"
@@ -15,6 +22,7 @@ class Ffmpeg < Formula
   option "with-libvo-aacenc", "Enable VisualOn AAC encoder"
   option "with-libass", "Enable ASS/SSA subtitle format"
   option "with-openjpeg", 'Enable JPEG 2000 image format'
+  option 'with-openssl', 'Enable SSL support'
   option 'with-schroedinger', 'Enable Dirac video format'
   option 'with-ffplay', 'Enable FFplay media player'
   option 'with-tools', 'Enable additional FFmpeg tools'

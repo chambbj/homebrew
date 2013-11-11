@@ -2,8 +2,8 @@ require 'formula'
 
 class Libgcrypt < Formula
   homepage 'http://gnupg.org/'
-  url 'ftp://ftp.gnupg.org/gcrypt/libgcrypt/libgcrypt-1.5.2.tar.bz2'
-  sha1 'c9998383532ba3e8bcaf690f2f0d65e814b48d2f'
+  url 'ftp://ftp.gnupg.org/gcrypt/libgcrypt/libgcrypt-1.5.3.tar.bz2'
+  sha1 '2c6553cc17f2a1616d512d6870fe95edf6b0e26e'
 
   depends_on 'libgpg-error'
 
@@ -15,9 +15,8 @@ class Libgcrypt < Formula
   end
 
   def patches
-    if ENV.compiler == :clang
-      {:p0 =>
-      "https://trac.macports.org/export/85232/trunk/dports/devel/libgcrypt/files/clang-asm.patch"}
+    if ENV.compiler == :clang and MacOS.clang_build_version < 500
+      { :p0 => "https://trac.macports.org/export/85232/trunk/dports/devel/libgcrypt/files/clang-asm.patch" }
     end
   end
 

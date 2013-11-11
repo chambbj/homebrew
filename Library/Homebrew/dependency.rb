@@ -17,12 +17,9 @@ class Dependency
   end
 
   def ==(other)
-    name == other.name
-  end
-
-  def eql?(other)
     instance_of?(other.class) && name == other.name
   end
+  alias_method :eql?, :==
 
   def hash
     name.hash
@@ -63,6 +60,15 @@ class Dependency
     "#<#{self.class}: #{name.inspect} #{tags.inspect}>"
   end
 
+  # Define marshaling semantics because we cannot serialize @env_proc
+  def _dump(*)
+    Marshal.dump([name, tags])
+  end
+
+  def self._load(marshaled)
+    new(*Marshal.load(marshaled))
+  end
+
   class << self
     # Expand the dependencies of dependent recursively, optionally yielding
     # [dependent, dep] pairs to allow callers to apply arbitrary filters to
@@ -71,18 +77,21 @@ class Dependency
     # optionals and recommendeds based on what the dependent has asked for.
     def expand(dependent, &block)
       deps = dependent.deps.map do |dep|
-        if prune?(dependent, dep, &block)
-          next
+        case action(dependent, dep, &block)
+        when :prune
+          next []
+        when :skip
+          expand(dep.to_formula, &block)
         else
           expand(dep.to_formula, &block) << dep
         end
-      end.flatten.compact
+      end.flatten
 
       merge_repeats(deps)
     end
 
-    def prune?(dependent, dep, &block)
-      catch(:prune) do
+    def action(dependent, dep, &block)
+      catch(:action) do
         if block_given?
           yield dependent, dep
         elsif dep.optional? || dep.recommended?
@@ -91,9 +100,14 @@ class Dependency
       end
     end
 
-    # Used to prune dependencies when calling expand with a block.
+    # Prune a dependency and its dependencies recursively
     def prune
-      throw(:prune, true)
+      throw(:action, :prune)
+    end
+
+    # Prune a single dependency but do not prune its dependencies
+    def skip
+      throw(:action, :skip)
     end
 
     def merge_repeats(deps)
