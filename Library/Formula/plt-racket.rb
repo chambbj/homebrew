@@ -1,27 +1,35 @@
-require 'formula'
+require "formula"
 
 class PltRacket < Formula
-  homepage 'http://racket-lang.org/'
-  # Use GitHub tarball as the release tarball doesn't have
-  # everything needed for building on OS X
-  url 'https://github.com/plt/racket/archive/v5.2.tar.gz'
-  sha1 '313425909ff8d956c3e99d0a2b5b3cb12d0f98ad'
+  homepage "http://racket-lang.org/"
+  url "https://github.com/plt/racket/archive/v6.0.1.tar.gz"
+  sha1 "c459860b5bc9c37f6e5d9f3e74ae8fcdd44ef45e"
 
   def install
-    cd 'src' do
+    cd 'racket/src' do
       args = ["--disable-debug", "--disable-dependency-tracking",
-              "--enable-xonx",
-              "--enable-shared",
-              "--prefix=#{prefix}" ]
+              "--enable-macprefix",
+              "--prefix=#{prefix}",
+              "--man=#{man}"]
 
-      if MacOS.prefer_64_bit?
-        args += ["--enable-mac64", "--enable-sgc", "--disable-gracket"]
-      end
+      args << "--disable-mac64" if not MacOS.prefer_64_bit?
 
       system "./configure", *args
       system "make"
-      ohai "Installing may take a long time (~40 minutes)" unless ARGV.verbose?
       system "make install"
     end
+  end
+
+  def caveats; <<-EOS.undent
+    This is a minimal Racket distribution.
+    If you want to use the DrRacket IDE, we recommend that you use
+    the PLT-provided packages from http://racket-lang.org/download/.
+    EOS
+  end
+
+  test do
+    output = `'#{bin}/racket' -e '(displayln "Hello Homebrew")'`
+    assert $?.success?
+    assert_match /Hello Homebrew/, output
   end
 end

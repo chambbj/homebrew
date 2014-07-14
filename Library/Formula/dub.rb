@@ -1,46 +1,35 @@
-require 'formula'
+require "formula"
+
+# dub generates version information from git, when building.
+# To not break this, we provide a custom download strategy.
+class DubHeadDownloadStrategy < GitDownloadStrategy
+  def stage
+    @clone.cd {reset}
+    safe_system "git", "clone", @clone, "."
+  end
+end
 
 class Dub < Formula
-  homepage 'http://registry.vibed.org/'
-  url  'https://github.com/rejectedsoftware/dub/archive/v0.9.19.tar.gz'
-  sha1 'dcf880029190180a1a4a4753237c0eb164941c98'
+  homepage "http://code.dlang.org/about"
+  url  "https://github.com/rejectedsoftware/dub/archive/v0.9.21.tar.gz"
+  sha1 "7752e14f3f5add50b1c7d9138739d72b276e6abe"
 
-  head 'https://github.com/rejectedsoftware/dub.git'
+  head "https://github.com/rejectedsoftware/dub.git", :using => DubHeadDownloadStrategy
 
-  depends_on 'pkg-config' => :build
-  depends_on 'dmd'  => :build
+  devel do
+    url "https://github.com/rejectedsoftware/dub/archive/v0.9.22-beta.4.tar.gz"
+    sha1 "9632af2d308e04feb62b258972bba4e29450819e"
+  end
 
-  def patches; DATA; end
+  depends_on "pkg-config" => :build
+  depends_on "dmd"  => :build
 
   def install
     system "./build.sh"
-    bin.install 'bin/dub'
+    bin.install "bin/dub"
   end
 
   test do
     system "#{bin}/dub; true"
   end
 end
-
-__END__
-diff --git a/build.sh b/build.sh
-index dce1766..eacc765 100755
---- a/build.sh
-+++ b/build.sh
-@@ -16,11 +16,11 @@ fi
- LIBS=`pkg-config --libs libcurl 2>/dev/null || echo "-lcurl"`
-
- # fix for modern GCC versions with --as-needed by default
--if [ "$DC" = "dmd" ]; then
--	LIBS="-l:libphobos2.a $LIBS"
--elif [ "$DC" = "ldmd2" ]; then
--	LIBS="-lphobos-ldc $LIBS"
--fi
-+# if [ "$DC" = "dmd" ]; then
-+#     LIBS="-l:libphobos2.a $LIBS"
-+# elif [ "$DC" = "ldmd2" ]; then
-+#     LIBS="-lphobos-ldc $LIBS"
-+# fi
-
- # adjust linker flags for dmd command line
- LIBS=`echo "$LIBS" | sed 's/^-L/-L-L/; s/ -L/ -L-L/g; s/^-l/-L-l/; s/ -l/ -L-l/g'`

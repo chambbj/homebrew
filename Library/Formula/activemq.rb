@@ -2,8 +2,8 @@ require 'formula'
 
 class Activemq < Formula
   homepage 'http://activemq.apache.org/'
-  url 'http://www.apache.org/dyn/closer.cgi?path=activemq/apache-activemq/5.9.0/apache-activemq-5.9.0-bin.tar.gz'
-  sha1 'f82be4b8fcac37ad0e5598db7f62083806e85d85'
+  url 'http://www.apache.org/dyn/closer.cgi?path=/activemq/5.10.0/apache-activemq-5.10.0-bin.tar.gz'
+  sha1 'e08179216b4c7cbcd2024716c62c51434481fabf'
 
   skip_clean 'libexec/webapps/admin/WEB-INF/jsp'
 

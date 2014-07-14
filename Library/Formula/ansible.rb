@@ -1,13 +1,19 @@
 require 'formula'
 
 class Ansible < Formula
-  homepage 'http://www.ansibleworks.com/'
-  url 'https://github.com/ansible/ansible/archive/v1.3.4.tar.gz'
-  sha1 '4ced16b905e7d3349835b3f7eff0f0ddf238cf38'
+  homepage 'http://www.ansible.com/home'
+  url 'http://releases.ansible.com/ansible/ansible-1.6.6.tar.gz'
+  sha1 '1795487608ab858ad9560de1f9732d5380007715'
 
-  head 'https://github.com/ansible/ansible.git', :branch => :devel
+  head 'https://github.com/ansible/ansible.git', :branch => 'devel'
 
-  depends_on :python
+  bottle do
+    sha1 "f23c9c0a2fa4d885b5b77d20be64183ddb436150" => :mavericks
+    sha1 "51565788e9a75a55debe9ea468c008406b3b2b6a" => :mountain_lion
+    sha1 "b7b5362938b0533c2e4b19af7ab9f41dc4a2e7f6" => :lion
+  end
+
+  depends_on :python if MacOS.version <= :snow_leopard
   depends_on 'libyaml'
 
   option 'with-accelerate', "Enable accelerated mode"
@@ -44,54 +50,38 @@ class Ansible < Formula
     end
   end
 
-  # TODO: Move this into Library/Homebrew somewhere (see also mitmproxy.rb).
-  def wrap bin_file, pythonpath
-    bin_file = Pathname.new bin_file
-    libexec_bin = Pathname.new libexec/'bin'
-    libexec_bin.mkpath
-    mv bin_file, libexec_bin
-    bin_file.write <<-EOS.undent
-      #!/bin/sh
-      PYTHONPATH="#{pythonpath}:$PYTHONPATH" "#{libexec_bin}/#{bin_file.basename}" "$@"
-    EOS
-  end
-
   def install
+    ENV["PYTHONPATH"] = lib+"python2.7/site-packages"
+    ENV.prepend_create_path 'PYTHONPATH', libexec+'lib/python2.7/site-packages'
+    # HEAD additionally requires this to be present in PYTHONPATH, or else
+    # ansible's own setup.py will fail.
+    ENV.prepend_create_path 'PYTHONPATH', prefix+'lib/python2.7/site-packages'
     install_args = [ "setup.py", "install", "--prefix=#{libexec}" ]
 
-    python do
-      resource('pycrypto').stage { system python, *install_args }
-      resource('pyyaml').stage { system python, *install_args }
-      resource('paramiko').stage { system python, *install_args }
-      resource('markupsafe').stage { system python, *install_args }
-      resource('jinja2').stage { system python, *install_args }
-      if build.with? 'accelerate'
-        resource('python-keyczar').stage { system python, *install_args }
-      end
-
-      inreplace 'lib/ansible/constants.py' do |s|
-        s.gsub! '/usr/share/ansible', share+'ansible'
-        s.gsub! '/etc/ansible', etc+'ansible'
-      end
-
-      # The "main" ansible module is installed in the default location and
-      # in order for it to be usable, we add the private_site_packages
-      # to the __init__.py of ansible so the deps (PyYAML etc) are found.
-      inreplace 'lib/ansible/__init__.py',
-                "__author__ = 'Michael DeHaan'",
-                "__author__ = 'Michael DeHaan'; import site; site.addsitedir('#{python.private_site_packages}')"
-
-      system python, "setup.py", "install", "--prefix=#{prefix}"
+    res = %w[pycrypto pyyaml paramiko markupsafe jinja2]
+    res << "python-keyczar" if build.with? "accelerate"
+    res.each do |r|
+      resource(r).stage { system "python", *install_args }
     end
+
+    inreplace 'lib/ansible/constants.py' do |s|
+      s.gsub! '/usr/share/ansible', share+'ansible'
+      s.gsub! '/etc/ansible', etc+'ansible'
+    end
+
+    system "python", "setup.py", "install", "--prefix=#{prefix}"
+
+    # These are now rolled into 1.6 and cause linking conflicts
+    rm Dir["#{bin}/easy_install*"]
+    rm "#{lib}/python2.7/site-packages/site.py"
+    rm Dir["#{lib}/python2.7/site-packages/*.pth"]
 
     man1.install Dir['docs/man/man1/*.1']
 
-    Dir["#{bin}/*"].each do |bin_file|
-      wrap bin_file, python.site_packages
-    end
+    bin.env_script_all_files(libexec+'bin', :PYTHONPATH => ENV['PYTHONPATH'])
   end
 
-  def test
+  test do
     system "#{bin}/ansible", "--version"
   end
 end

@@ -20,6 +20,7 @@ module OS
         "2.7.51" => "2.7.5_rc2",
         "2.7.52" => "2.7.5_rc3",
         "2.7.53" => "2.7.5_rc4",
+        "2.7.54" => "2.7.5",
       }.freeze
 
       # This returns the version number of XQuartz, not of the upstream X.org.
@@ -43,18 +44,21 @@ module OS
       # http://xquartz.macosforge.org/trac/wiki/Releases
       def latest_version
         case MacOS.version
-        when "10.5" then "2.6.3"
-        when "10.9" then "2.7.5_rc4"
-        else "2.7.4"
+        when "10.5"
+          "2.6.3"
+        else
+          "2.7.6"
         end
       end
 
       def bundle_path
-        MacOS.app_with_bundle_id(FORGE_BUNDLE_ID) || MacOS.app_with_bundle_id(APPLE_BUNDLE_ID)
+        MacOS.app_with_bundle_id(FORGE_BUNDLE_ID, APPLE_BUNDLE_ID)
       end
 
       def version_from_mdls(path)
-        version = `mdls -raw -nullMarker "" -name kMDItemVersion "#{path}" 2>/dev/null`.strip
+        version = Utils.popen_read(
+          "/usr/bin/mdls", "-raw", "-nullMarker", "", "-name", "kMDItemVersion", path.to_s
+        ).strip
         version unless version.empty?
       end
 

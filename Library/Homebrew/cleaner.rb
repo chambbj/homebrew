@@ -1,95 +1,96 @@
 # Cleans a newly installed keg.
 # By default:
-# * removes info files
 # * removes .la files
 # * removes empty directories
 # * sets permissions on executables
+# * removes unresolved symlinks
 class Cleaner
 
-  # Create a cleaner for the given formula and clean its keg
+  # Create a cleaner for the given formula
   def initialize f
     @f = f
-    [f.bin, f.sbin, f.lib].select{ |d| d.exist? }.each{ |d| clean_dir d }
+  end
 
-    if ENV['HOMEBREW_KEEP_INFO']
-      # Get rid of the directory file, so it no longer bother us at link stage.
-      info_dir_file = f.info + 'dir'
-      if info_dir_file.file? and not f.skip_clean? info_dir_file
-        puts "rm #{info_dir_file}" if ARGV.verbose?
-        info_dir_file.unlink
-      end
-    else
-      f.info.rmtree if f.info.directory? and not f.skip_clean? f.info
+  # Clean the keg of formula @f
+  def clean
+    ObserverPathnameExtension.reset_counts!
+
+    # Many formulae include 'lib/charset.alias', but it is not strictly needed
+    # and will conflict if more than one formula provides it
+    alias_path = @f.lib/'charset.alias'
+    alias_path.extend(ObserverPathnameExtension).unlink if alias_path.exist?
+
+    [@f.bin, @f.sbin, @f.lib].select{ |d| d.exist? }.each{ |d| clean_dir d }
+
+    # Get rid of any info 'dir' files, so they don't conflict at the link stage
+    info_dir_file = @f.info + 'dir'
+    if info_dir_file.file? and not @f.skip_clean? info_dir_file
+      puts "rm #{info_dir_file}" if ARGV.verbose?
+      info_dir_file.unlink
     end
 
-    # Remove empty folders.
-    # We want post-order traversal, so use a stack.
-    paths = []
-    f.prefix.find do |path|
-      if path.directory?
-        if f.skip_clean? path
-          Find.prune
-        else
-          paths << path
-        end
-      end
-    end
-
-    paths.reverse_each do |d|
-      if d.children.empty? and not f.skip_clean? d
-        puts "rmdir: #{d} (empty)" if ARGV.verbose?
-        d.rmdir
-      end
-    end
+    prune
   end
 
   private
 
-  # Set permissions for executables and non-executables
-  def clean_file_permissions path
-    perms = if path.mach_o_executable? || path.text_executable?
-      0555
-    else
-      0444
-    end
-    if ARGV.debug?
-      old_perms = path.stat.mode
-      if perms != old_perms
-        puts "Fixing #{path} permissions from #{old_perms.to_s(8)} to #{perms.to_s(8)}"
+  # Removes any empty directories in the formula's prefix subtree
+  # Keeps any empty directions projected by skip_clean
+  def prune
+    dirs = []
+    symlinks = []
+    @f.prefix.find do |path|
+      if @f.skip_clean? path
+        Find.prune
+      elsif path.symlink?
+        symlinks << path
+      elsif path.directory?
+        dirs << path
       end
     end
-    path.chmod perms
+
+    # Remove directories opposite from traversal, so that a subtree with no
+    # actual files gets removed correctly.
+    dirs.reverse_each do |d|
+      if d.children.empty?
+        puts "rmdir: #{d} (empty)" if ARGV.verbose?
+        d.rmdir
+      end
+    end
+
+    # Remove unresolved symlinks
+    symlinks.reverse_each do |s|
+      s.unlink unless s.resolved_path_exists?
+    end
   end
 
   # Clean a single folder (non-recursively)
   def clean_dir d
     d.find do |path|
-      path.extend(NoisyPathname) if ARGV.verbose?
+      path.extend(ObserverPathnameExtension)
 
-      if path.directory?
-        # Stop cleaning this subtree if protected
-        Find.prune if @f.skip_clean? path
-      elsif not path.file?
-        # Sanity?
+      Find.prune if @f.skip_clean? path
+
+      if path.symlink? or path.directory?
         next
       elsif path.extname == '.la'
-        # *.la files are stupid
-        path.unlink unless @f.skip_clean? path
-      elsif path == @f.lib+'charset.alias'
-        # Many formulae symlink this file, but it is not strictly needed
-        path.unlink unless @f.skip_clean? path
-      elsif not path.symlink?
-        # Fix permissions
-        clean_file_permissions(path) unless @f.skip_clean? path
+        path.unlink
+      else
+        # Set permissions for executables and non-executables
+        perms = if path.mach_o_executable? || path.text_executable?
+                  0555
+                else
+                  0444
+                end
+        if ARGV.debug?
+          old_perms = path.stat.mode & 0777
+          if perms != old_perms
+            puts "Fixing #{path} permissions from #{old_perms.to_s(8)} to #{perms.to_s(8)}"
+          end
+        end
+        path.chmod perms
       end
     end
   end
 
-end
-
-module NoisyPathname
-  def unlink
-    puts "rm: #{self}"
-    super
-  end
 end

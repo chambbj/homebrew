@@ -2,10 +2,10 @@ require 'formula'
 
 class PhoronixTestSuite < Formula
   homepage 'http://www.phoronix-test-suite.com/'
-  url 'http://www.phoronix-test-suite.com/download.php?file=phoronix-test-suite-4.8.3'
-  sha1 '4dc8281d3fec5a2df86b064902794b830c8df088'
+  url 'http://www.phoronix-test-suite.com/download.php?file=phoronix-test-suite-5.2.0'
+  sha1 'ed5025e2f1b8f0fe1fc2f725979b502d1fcd7835'
 
-  def patches; DATA; end
+  patch :DATA
 
   def install
     system "./install-sh", prefix

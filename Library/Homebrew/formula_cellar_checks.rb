@@ -40,8 +40,7 @@ module FormulaCellarChecks
 
   def check_jars
     return unless f.lib.directory?
-
-    jars = f.lib.children.select{|g| g.to_s =~ /\.jar$/}
+    jars = f.lib.children.select { |g| g.extname == ".jar" }
     return if jars.empty?
 
     ["JARs were installed to \"#{f.lib}\".",
@@ -86,6 +85,24 @@ module FormulaCellarChecks
       <<-EOS.undent
         The offending files are:
           #{non_exes * "\n          "}
+      EOS
+    ]
+  end
+
+  def check_generic_executables bin
+    return unless bin.directory?
+    generic_names = %w[run service start stop]
+    generics = bin.children.select { |g| generic_names.include? g.basename.to_s }
+    return if generics.empty?
+
+    ["Generic binaries were installed to \"#{bin}\".",
+      <<-EOS.undent
+        Binaries with generic names are likely to conflict with other software,
+        and suggest that this software should be installed to "libexec" and
+        then symlinked as needed.
+
+        The offending files are:
+          #{generics * "\n          "}
       EOS
     ]
   end
